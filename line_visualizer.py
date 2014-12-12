@@ -4,78 +4,111 @@
 import io
 import re
 
-def main():
-    with io.open('log.txt', encoding = 'utf-8') as f:
-        msg_date = None
-        row_count = 0
-        concat_line = ''
 
-        for line in f:
-            m = re.match('^\s+$', line)
-            if m:
+class Messages:
+    def __init__(self):
+        self.clear()
+        self.messages = []
+        self.keys = []
+
+    def clear(self):
+        self.current_date = None
+        self.current_time = None
+        self.current_author = None
+        self.current_text = None
+
+    def push(self):
+        if self.current_text:
+            self.messages.append({
+                'date': self.current_date,
+                'time': self.current_time,
+                'author': self.current_author,
+                'text': self.current_text
+            })
+            self.keys = list(set(self.keys + [self.current_author]))
+
+    def parse_lines(self, lines):
+        for line in lines:
+            # skip void lines
+            if re.match('^\s+$', line):
                 continue
-
-            m1 = re.match('\d+\/\d+\/\d+\(.+\)$', line)
-            m2 = re.match('\d+:\d+\s+[^\s]+\s+[^$]+$', line)
-            if not (m1 or m2):
-                concat_line += line.replace('\n', '')
-#                print '---->'
-#                print line.encode('utf-8')
-#                print '<----'
-                continue
-#            else:
-#                print '---->>'
-#                print line.encode('utf-8')
-#                print '<<----'
-
-            m = re.match('(\d+:\d+)\s+([^\s]+)\s+([^$]+)$', concat_line)
-            if m:
-#                print concat_line.encode('utf-8')
-                concat_line = ''
-
-                msg_time = m.group(1).encode('utf-8')
-                msg_author = m.group(2).encode('utf-8')
-                msg_text = m.group(3).encode('utf-8')
-
-                if msg_text.find('[スタンプ]') + msg_text.find('不在着信') + msg_text.find('通話に応答がありませんでした') +  msg_text.find('通話時間') < 0:
-                    if not msg_author in msg_count:
-                        msg_count[msg_author] = 0
-                    if not msg_author in msg_size:
-                        msg_size[msg_author] = 0
-
-                    msg_count[msg_author] += 1
-                    msg_size[msg_author] += len(msg_text)
-
-            m = re.match('\d+:\d+\s+[^\s]+\s+[^$]+$', line)
-            if m:
-                concat_line = line.replace('\n', '')
-                continue
-
+                
+            # parse date of the day
             m = re.match('(\d+\/\d+\/\d+)\(.+\)$', line)
             if m:
-#                print line.encode('utf-8')
-                if msg_date:
-                    if row_count == 0:
-                        row = ''
-                        for key, value in msg_count.iteritems():
-                            row += ',%s_count,%s_size' % (key.decode('utf-8'), key.decode('utf-8'))
-                        print row.encode('utf-8')
-
-                    row = msg_date
-                    for key, value in msg_count.iteritems():
-                        row += ',%d,%d' % (msg_count[key], msg_size[key])
-                    print row
-
-                    row_count += 1
-
-                msg_date = m.group(1).encode('utf-8')
-                msg_count = {}
-                msg_size = {}
+                self.current_date = m.group(1).encode('utf-8')
                 continue
 
+            # parse each talk
+            m = re.match('(\d+:\d+)\s+([^\s]+)\s+([^$]+)$', line)
+            if m:
+                assert self.current_date
+                self.push()
 
+                self.current_time = m.group(1).encode('utf-8')
+                self.current_author = m.group(2).encode('utf-8')
+                self.current_text = m.group(3).encode('utf-8')
+            else:
+                # concatenate multi-line talks
+                assert self.current_time
+                assert self.current_author
+                assert self.current_text
 
-#                print msg_date + msg_time + ' ' + msg_author + ' '+ msg_text
+                self.current_text += line.replace('\n', '').encode('utf-8')
+
+        # for EOF
+        self.push()
+        
+        return self.messages
+
+    def analyze(self):
+        daily_result = []
+        current_date = None
+        current_messages = []
+
+        for message in self.messages:
+            date = message['date']
+            if current_date and not current_date == date:
+                daily_result.append([current_date, current_messages])
+                current_messages = []
+
+            current_date = date
+            current_messages.append(message)
+
+        row = ''
+        for key in self.keys:
+            row += ',%s_count,%s_size' % (key, key)
+        print row
+
+        for current_date, current_messages in daily_result:
+            count = { key : 0 for key in self.keys }
+            size = { key : 0 for key in self.keys }
+
+            for message in current_messages:
+                text = message['text']
+                author = message['author']
+
+                if (text.find('[スタンプ]') >= 0 or
+                    text.find('[画像]') >= 0 or
+                    text.find('不在着信') >= 0 or
+                    text.find('通話に応答がありませんでした') >= 0 or
+                    text.find('通話時間') >= 0):
+                    continue
+
+                count[author] += 1
+                size[author] += len(text)
+
+            row = current_date
+            for key in self.keys:
+                row += ',%d,%d' % (count[key], size[key])
+            print row
+
+def main():
+    messages = Messages()
+
+    with io.open('log.txt', encoding = 'utf-8') as f:
+        messages.parse_lines(f)
+        messages.analyze()
 
 if __name__ == '__main__':
     main()
