@@ -32,7 +32,7 @@ class Messages:
             # skip void lines
             if re.match('^\s+$', line):
                 continue
-                
+
             # parse date of the day
             m = re.match('(\d+\/\d+\/\d+)\(.+\)$', line)
             if m:
@@ -58,7 +58,7 @@ class Messages:
 
         # for EOF
         self.push()
-        
+
         return self.messages
 
     def analyze(self):
@@ -81,18 +81,18 @@ class Messages:
         print row
 
         for current_date, current_messages in daily_result:
-            count = { key : 0 for key in self.keys }
-            size = { key : 0 for key in self.keys }
+            count = {key: 0 for key in self.keys}
+            size = {key: 0 for key in self.keys}
 
             for message in current_messages:
                 text = message['text']
                 author = message['author']
 
                 if (text.find('[スタンプ]') >= 0 or
-                    text.find('[画像]') >= 0 or
-                    text.find('不在着信') >= 0 or
-                    text.find('通話に応答がありませんでした') >= 0 or
-                    text.find('通話時間') >= 0):
+                        text.find('[画像]') >= 0 or
+                        text.find('不在着信') >= 0 or
+                        text.find('通話に応答がありませんでした') >= 0 or
+                        text.find('通話時間') >= 0):
                     continue
 
                 count[author] += 1
@@ -103,10 +103,11 @@ class Messages:
                 row += ',%d,%d' % (count[key], size[key])
             print row
 
+
 def main():
     messages = Messages()
 
-    with io.open('log.txt', encoding = 'utf-8') as f:
+    with io.open('log.txt', encoding='utf-8') as f:
         messages.parse_lines(f)
         messages.analyze()
 
